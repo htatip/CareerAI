@@ -5,7 +5,7 @@ from groq import Groq
 import re, json, os
 from pydantic import BaseModel
 from typing import List, Optional
-
+from fastapi.routing import APIRouter
 from dotenv import load_dotenv
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 
@@ -34,11 +34,6 @@ def require_service_secret(x_service_secret: Optional[str] = Header(None)):
     if x_service_secret != AI_SERVICE_SECRET:
         raise HTTPException(status_code=401, detail="Invalid service secret")
 
-public_app = FastAPI()
-
-@public_app.get("/ping")
-def ping():
-    return {"status": "ok"}
 
 # Apply authentication to all routes by default
 app = FastAPI(dependencies=[Depends(require_service_secret)])
@@ -258,3 +253,12 @@ Resume: {data.resume_text[:3000]}"""
         raw = response.choices[0].message.content
         return {"weak_sections": [], "improvement_suggestions": [raw], "example_rewrites": {}}
 
+
+
+public_router = APIRouter()
+
+@public_router.get("/ping")
+def ping():
+    return {"status": "ok"}
+
+app.include_router(public_router)
