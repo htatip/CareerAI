@@ -18,7 +18,7 @@ public class ResumeSkill {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "resume_id", nullable = false)
-    private Resume resume; // ← was: private Long resumeId
+    private Resume resume;
 
     @Column(nullable = false, length = 100)
     private String skill;

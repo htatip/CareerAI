@@ -254,6 +254,6 @@ Resume: {data.resume_text[:3000]}"""
         return {"weak_sections": [], "improvement_suggestions": [raw], "example_rewrites": {}}
 
 
-@app.get("/health")
+@app.get("/health", dependencies=[])
 def health():
     return {"status": "ok", "service": "ai-resume-service"}
