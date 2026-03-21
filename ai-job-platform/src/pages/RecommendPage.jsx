@@ -46,7 +46,7 @@ export default function RecommendPage() {
           <p className="text-muted">Our AI searches live jobs using your skills and ranks the top matches.</p>
         </div>
 
-        {/* Location input — always visible */}
+        {/* Location input*/}
         <div className="bg-surface border border-border rounded-3xl p-6 mb-6">
           <label className="block text-paper text-sm font-medium mb-3">
             📍 Where are you looking for jobs?
