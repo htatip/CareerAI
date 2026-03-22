@@ -15,7 +15,7 @@ import java.util.Map;
  * All business logic and ownership enforcement is delegated to JobService.
  */
 @RestController
-@RequestMapping("/jobs")
+@RequestMapping("/api/jobs")
 @RequiredArgsConstructor
 public class JobController {
 

@@ -19,7 +19,7 @@ import java.io.IOException;
 import java.util.List;
 
 @RestController
-@RequestMapping("/resume")
+@RequestMapping("/api/resume")
 @RequiredArgsConstructor
 public class ResumeController {
 
