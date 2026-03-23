@@ -32,7 +32,6 @@ public class RateLimitFilter extends OncePerRequestFilter {
     /**
      * Caffeine cache: evicts entries 10 minutes after last access,
      * capped at 10,000 unique IPs to prevent unbounded memory growth.
-     * Previously a plain ConcurrentHashMap was used which never evicted entries.
      */
     private final Cache<String, Bucket> buckets = Caffeine.newBuilder()
             .maximumSize(10_000)
@@ -44,7 +43,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
 
-        if (!request.getRequestURI().startsWith("/auth/")) {
+        if (!request.getRequestURI().startsWith("/auth/login")) {
             filterChain.doFilter(request, response);
             return;
         }
