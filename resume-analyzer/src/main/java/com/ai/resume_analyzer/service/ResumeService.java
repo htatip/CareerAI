@@ -16,7 +16,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -28,11 +28,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -47,12 +43,10 @@ public class ResumeService {
     private final UserRepository userRepository;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final CloudinaryService cloudinaryService;
 
     @Value("${app.ai-service.base-url}")
     private String aiServiceBaseUrl;
-
-    @Value("${app.upload-dir}")
-    private String uploadDir;
 
     @Value("${app.ai-service.secret}")
     private String aiServiceSecret;
@@ -76,22 +70,16 @@ public class ResumeService {
             throw new IllegalArgumentException("File is too large. Maximum size is 5 MB.");
         }
 
-        Path uploadPath = Paths.get(uploadDir);
-        Files.createDirectories(uploadPath);
-
-        String safeFileName = Paths.get(originalName).getFileName().toString();
-        String filePath = uploadPath.resolve(safeFileName).toString();
-        File destination = new File(filePath);
-        file.transferTo(destination);
-        log.info("Resume saved to disk: {}", filePath);
+        String cloudinaryUrl = cloudinaryService.uploadPdf(file);
+        log.info("Resume uploaded to Cloudinary: {}", cloudinaryUrl);
 
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "User not found with email: " + email));
 
         Resume resume = new Resume();
-        resume.setFileName(safeFileName);
-        resume.setFilePath(filePath);
+        resume.setFileName(originalName);
+        resume.setFilePath(cloudinaryUrl);
         resume.setUser(user);
         resumeRepository.save(resume);
 
@@ -100,7 +88,13 @@ public class ResumeService {
         headers.set("X-Service-Secret", aiServiceSecret);
 
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("file", new FileSystemResource(destination));
+        ByteArrayResource fileResource = new ByteArrayResource(file.getBytes()) {
+            @Override
+            public String getFilename() {
+                return originalName;
+            }
+        };
+        body.add("file", fileResource);
 
         ResponseEntity<String> response = restTemplate.postForEntity(
                 aiServiceBaseUrl + "/analyze-resume",
@@ -151,12 +145,12 @@ public class ResumeService {
     @Transactional
     public void deleteResume(Long resumeId, String email) {
         Resume resume = findOwnedResume(resumeId, email);
-
-        File file = new File(resume.getFilePath());
-        if (file.exists()) {
-            boolean deleted = file.delete();
-            if (!deleted)
-                log.warn("Could not delete file: {}", resume.getFilePath());
+        try {
+            String publicId = cloudinaryService.extractPublicId(resume.getFilePath());
+            cloudinaryService.deletePdf(publicId);
+            log.info("Resume deleted from Cloudinary: {}", publicId);
+        } catch (IOException e) {
+            log.warn("Could not delete file from Cloudinary: {}", resume.getFilePath());
         }
 
         resumeSkillRepository.deleteByResumeId(resumeId);
@@ -166,12 +160,11 @@ public class ResumeService {
 
     public Resource downloadResume(Long resumeId, String email) {
         Resume resume = findOwnedResume(resumeId, email);
-        File file = new File(resume.getFilePath());
-
-        if (!file.exists() || !file.canRead()) {
-            throw new ResourceNotFoundException("Resume file not found on server.");
+        byte[] fileBytes = restTemplate.getForObject(resume.getFilePath(), byte[].class);
+        if (fileBytes == null) {
+            throw new ResourceNotFoundException("Resume file not found on Cloudinary.");
         }
-        return new FileSystemResource(file);
+        return new ByteArrayResource(fileBytes);
     }
 
     public List<String> getSkills(Long resumeId, String email) {
