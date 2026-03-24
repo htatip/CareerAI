@@ -34,9 +34,9 @@ def require_service_secret(x_service_secret: Optional[str] = Header(None)):
     if x_service_secret != AI_SERVICE_SECRET:
         raise HTTPException(status_code=401, detail="Invalid service secret")
 
-
+app = FastAPI()
 # Apply authentication to all routes by default
-app = FastAPI(dependencies=[Depends(require_service_secret)])
+Secure = FastAPI(dependencies=[Depends(require_service_secret)])
 
 
 # ── Shared helper: strip markdown fences and parse JSON from LLM output ───────
@@ -145,7 +145,11 @@ class ResumeImproveRequest(BaseModel):
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
-@app.post("/analyze-resume")
+@app.get("/health")
+def health():
+    return {"service": "running"}
+
+@Secure.post("/analyze-resume")
 async def analyze_resume(file: UploadFile = File(...)):
     content = await file.read()
     validate_pdf_file(content, file.content_type or "")
@@ -154,7 +158,7 @@ async def analyze_resume(file: UploadFile = File(...)):
     return {"text": text, "skills": result["skills"]}
 
 
-@app.post("/match-job")
+@Secure.post("/match-job")
 async def match_job(resume_skills: List[str], job_skills: List[str]):
     resume_set = set(s.lower() for s in resume_skills)
     job_set = set(s.lower() for s in job_skills)
@@ -168,7 +172,7 @@ async def match_job(resume_skills: List[str], job_skills: List[str]):
     }
 
 
-@app.post("/ai-resume-job-analysis")
+@Secure.post("/ai-resume-job-analysis")
 async def ai_resume_job_analysis(data: MatchRequest):
     prompt = f"""You are an AI career advisor. Analyze resume skills vs job description.
 Return ONLY JSON with: Match Score (0-100), Matched Skills, Missing Skills, Resume improvement suggestions.
@@ -185,7 +189,7 @@ Job Description: {data.job_description[:2000]}"""
     return parse_ai_json(response.choices[0].message.content)
 
 
-@app.post("/ai-resume-analysis")
+@Secure.post("/ai-resume-analysis")
 async def ai_resume_analysis(data: ResumeAnalysisRequest):
     prompt = f"""Analyze this resume. Return ONLY JSON with:
 ATS_Score (0-100), Strengths (list), Weaknesses (list), Suggestions (list).
@@ -201,7 +205,7 @@ Resume: {data.resume_text[:3000]}"""
     return parse_ai_json(response.choices[0].message.content)
 
 
-@app.post("/rank-jobs")
+@Secure.post("/rank-jobs")
 def rank_jobs(data: JobRankingRequest):
     if not data.jobs:
         return {"message": "No jobs provided"}
@@ -234,7 +238,7 @@ Jobs to rank: {data.jobs[:10]}"""
         return {"error": "AI response not valid JSON", "raw_response": response.choices[0].message.content}
 
 
-@app.post("/improve-resume")
+@Secure.post("/improve-resume")
 def improve_resume(data: ResumeImproveRequest):
     prompt = f"""Analyze this resume and suggest improvements. Return ONLY JSON with:
 weak_sections (list), improvement_suggestions (list), example_rewrites (object).
@@ -255,10 +259,3 @@ Resume: {data.resume_text[:3000]}"""
 
 
 
-public_router = FastAPI()
-
-@public_router.get("/ping")
-def ping():
-    return {"status": "ok"}
-
-app.include_router(public_router)
