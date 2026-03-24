@@ -69,13 +69,12 @@ public class ResumeService {
         if (file.getSize() > 5L * 1024 * 1024) {
             throw new IllegalArgumentException("File is too large. Maximum size is 5 MB.");
         }
-
-        String cloudinaryUrl = cloudinaryService.uploadPdf(file);
-        log.info("Resume uploaded to Cloudinary: {}", cloudinaryUrl);
-
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "User not found with email: " + email));
+
+        String cloudinaryUrl = cloudinaryService.uploadPdf(file);
+        log.info("Resume uploaded to Cloudinary: {}", cloudinaryUrl);
 
         Resume resume = new Resume();
         resume.setFileName(originalName);
@@ -96,9 +95,27 @@ public class ResumeService {
         };
         body.add("file", fileResource);
 
-        ResponseEntity<String> response = restTemplate.postForEntity(
-                aiServiceBaseUrl + "/analyze-resume",
-                new HttpEntity<>(body, headers), String.class);
+        ResponseEntity<String> response = null;
+        int maxRetries = 3;
+        for (int i = 0; i < maxRetries; i++) {
+            try {
+                response = restTemplate.postForEntity(
+                        aiServiceBaseUrl + "/analyze-resume",
+                        new HttpEntity<>(body, headers), String.class);
+                break;
+            } catch (Exception e) {
+                if (i < maxRetries - 1) {
+                    log.warn("AI service error, retrying in 5 seconds... attempt {}", i + 1);
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                } else {
+                    throw e;
+                }
+            }
+        }
 
         JsonNode root = objectMapper.readTree(response.getBody());
 
