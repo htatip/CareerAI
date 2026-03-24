@@ -19,7 +19,8 @@ public class CloudinaryService {
                 Map.of(
                         "resource_type", "raw",
                         "folder", "resumes",
-                        "format", "pdf"));
+                        "format", "pdf",
+                        "access_mode", "public"));
         return (String) result.get("secure_url");
     }
 
