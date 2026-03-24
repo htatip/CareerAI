@@ -36,7 +36,9 @@ def require_service_secret(x_service_secret: Optional[str] = Header(None)):
 
 app = FastAPI()
 # Apply authentication to all routes by default
-Secure = FastAPI(dependencies=[Depends(require_service_secret)])
+Secure = APIRouter(
+    dependencies=[Depends(require_service_secret)]
+)
 
 
 # ── Shared helper: strip markdown fences and parse JSON from LLM output ───────
