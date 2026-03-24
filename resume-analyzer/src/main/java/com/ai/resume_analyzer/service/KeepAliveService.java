@@ -18,11 +18,11 @@ public class KeepAliveService {
     @Value("${app.ai-service.base-url}")
     private String aiServiceBaseUrl;
 
-    // Ping every 10 minutes to prevent sleep
-    @Scheduled(fixedRate = 600000)
+    // Ping every 2 minutes to prevent sleep
+    @Scheduled(fixedRate = 120000)
     public void keepAlive() {
         try {
-            restTemplate.getForObject(aiServiceBaseUrl + "/ping", String.class);
+            restTemplate.getForObject(aiServiceBaseUrl + "/health", String.class);
             log.info("AI service keep-alive ping successful");
         } catch (Exception e) {
             log.warn("AI service keep-alive ping failed: {}", e.getMessage());
