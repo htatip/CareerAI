@@ -255,7 +255,7 @@ Resume: {data.resume_text[:3000]}"""
 
 
 
-public_router = APIRouter()
+public_router = FastAPI()
 
 @public_router.get("/ping")
 def ping():
