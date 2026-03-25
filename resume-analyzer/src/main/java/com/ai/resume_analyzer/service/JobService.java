@@ -13,6 +13,7 @@ import tools.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.URLEncoder;
@@ -36,16 +37,27 @@ public class JobService {
     @Value("${app.ai-service.secret}")
     private String aiServiceSecret;
 
+    // ── RapidAPI (primary) ────────────────────────────────────────────────────
     @Value("${rapidapi.key}")
-    private String apiKey;
+    private String rapidApiKey;
 
     @Value("${rapidapi.host}")
-    private String apiHost;
+    private String rapidApiHost;
+
+    // ── OpenWebNinja (fallback) ───────────────────────────────────────────────
+    @Value("${openwebninja.key}")
+    private String openWebNinjaKey;
+
+    @Value("${openwebninja.host}")
+    private String openWebNinjaHost;
+
+    // ── Provider-specific JSearch endpoints ──────────────────────────────────
+    // RapidAPI and OpenWebNinja expose JSearch at different base URLs.
+    private static final String RAPIDAPI_URL = "https://jsearch.p.rapidapi.com/search";
+    private static final String OPENWEBNINJA_URL = "https://api.openwebninja.com/jsearch";
 
     /**
      * Verifies that the given resume belongs to the given user.
-     * Throws UnauthorizedException if the resume is not found or not owned by the
-     * user.
      */
     private void verifyOwnership(Long resumeId, String email) {
         resumeRepository.findByIdAndUserEmail(resumeId, email)
@@ -54,21 +66,18 @@ public class JobService {
     }
 
     /**
-     * Searches live jobs via the JSearch RapidAPI using the given skill and
-     * location.
-     * Supports pagination via the page parameter (0-indexed).
+     * Searches live jobs. Tries RapidAPI first; falls back to OpenWebNinja on
+     * quota errors (HTTP 429 / 403).
      */
     public List<JobDTO> searchJobs(Long resumeId, String email,
-            String skill, String location,
-            int page) {
+            String skill, String location, int page) {
         verifyOwnership(resumeId, email);
 
-        String encodedQuery = URLEncoder.encode(skill + " in " + location, StandardCharsets.UTF_8);
-        String apiUrl = "https://jsearch.p.rapidapi.com/search?query="
-                + encodedQuery + "&num_pages=1&page=" + (page + 1);
+        String queryString = "?query="
+                + URLEncoder.encode(skill + " in " + location, StandardCharsets.UTF_8)
+                + "&num_pages=1&page=" + (page + 1);
 
-        ResponseEntity<Map> response = restTemplate.exchange(
-                apiUrl, HttpMethod.GET, new HttpEntity<>(buildRapidApiHeaders()), Map.class);
+        ResponseEntity<Map> response = executeWithFallback(queryString);
 
         List<Map<String, Object>> jobs = extractJobs(response);
         List<JobDTO> results = new ArrayList<>();
@@ -87,8 +96,7 @@ public class JobService {
     }
 
     /**
-     * Sends a job description to the AI service to compute a match score against
-     * the user's resume skills.
+     * Sends a job description to the AI service to compute a match score.
      */
     public String analyzeJob(Long resumeId, String email, Map<String, String> request) {
         verifyOwnership(resumeId, email);
@@ -109,9 +117,8 @@ public class JobService {
     }
 
     /**
-     * Fetches live jobs from RapidAPI, sends them to the AI ranker, then merges
-     * the AI-generated match scores back with the original RapidAPI data so that
-     * apply links are preserved in the final response.
+     * Fetches live jobs, ranks them via AI, and merges apply links back.
+     * Uses RapidAPI with automatic OpenWebNinja fallback on quota exhaustion.
      */
     public String recommendJobsAI(Long resumeId, String email, String location) {
         verifyOwnership(resumeId, email);
@@ -123,17 +130,15 @@ public class JobService {
             throw new IllegalStateException("No skills found for resume id: " + resumeId);
         }
 
-        // Step 1: Fetch live jobs from RapidAPI using the top two skills
         String query = skillList.stream().limit(2).collect(Collectors.joining(" "));
-        String encodedQuery = URLEncoder.encode(query + " developer in " + location, StandardCharsets.UTF_8);
-        String apiUrl = "https://jsearch.p.rapidapi.com/search?query=" + encodedQuery + "&num_pages=1";
+        String queryString = "?query="
+                + URLEncoder.encode(query + " developer in " + location, StandardCharsets.UTF_8)
+                + "&num_pages=1";
 
-        ResponseEntity<Map> response = restTemplate.exchange(
-                apiUrl, HttpMethod.GET, new HttpEntity<>(buildRapidApiHeaders()), Map.class);
+        ResponseEntity<Map> response = executeWithFallback(queryString);
 
         List<Map<String, Object>> jobsData = extractJobs(response);
 
-        // Step 2: Send simplified job title list to the AI ranker
         List<String> jobTitles = new ArrayList<>();
         for (Map<String, Object> job : jobsData) {
             jobTitles.add(getString(job, "job_title") + " at " + getString(job, "employer_name"));
@@ -149,7 +154,6 @@ public class JobService {
                 aiServiceBaseUrl + "/rank-jobs",
                 new HttpEntity<>(aiRequest, buildAiHeaders()), String.class);
 
-        // Step 3: Merge AI scores back with full RapidAPI data to preserve apply links
         try {
             JsonNode aiJobs = objectMapper.readTree(aiResponse.getBody());
 
@@ -178,12 +182,84 @@ public class JobService {
         }
     }
 
+    // ── Fallback core logic ───────────────────────────────────────────────────
+
+    /**
+     * Executes a JSearch GET request using the shared query string.
+     * Builds the full URL per provider so each hits its own correct endpoint:
+     * Primary → https://jsearch.p.rapidapi.com/search?...
+     * Fallback → https://api.openwebninja.com/jsearch?...
+     *
+     * On HTTP 429 (Too Many Requests) or 403 (Forbidden / quota exhausted)
+     * from RapidAPI, automatically retries with OpenWebNinja.
+     *
+     * @param queryString the raw query string including leading '?', e.g.
+     *                    "?query=java+in+NYC&num_pages=1"
+     */
+    private ResponseEntity<Map> executeWithFallback(String queryString) {
+        String rapidApiFullUrl = RAPIDAPI_URL + queryString;
+        try {
+            log.debug("Trying RapidAPI: {}", rapidApiFullUrl);
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    rapidApiFullUrl, HttpMethod.GET,
+                    new HttpEntity<>(buildHeaders(rapidApiKey, rapidApiHost)),
+                    Map.class);
+            log.debug("RapidAPI succeeded");
+            return response;
+
+        } catch (HttpClientErrorException ex) {
+            HttpStatusCode status = ex.getStatusCode();
+
+            if (isQuotaError(status)) {
+                log.warn("RapidAPI quota exhausted (HTTP {}). Switching to OpenWebNinja fallback.",
+                        status.value());
+                return callOpenWebNinja(queryString);
+            }
+
+            log.error("RapidAPI returned non-quota error: HTTP {}", status.value());
+            throw ex;
+        }
+    }
+
+    /**
+     * Executes the request against OpenWebNinja using its own base URL.
+     * Throws a clear RuntimeException if this also fails.
+     *
+     * @param queryString the raw query string, e.g.
+     *                    "?query=java+in+NYC&num_pages=1"
+     */
+    private ResponseEntity<Map> callOpenWebNinja(String queryString) {
+        String openWebNinjaFullUrl = OPENWEBNINJA_URL + queryString;
+        try {
+            log.info("Calling OpenWebNinja fallback: {}", openWebNinjaFullUrl);
+            ResponseEntity<Map> response = restTemplate.exchange(
+                    openWebNinjaFullUrl, HttpMethod.GET,
+                    new HttpEntity<>(buildHeaders(openWebNinjaKey, openWebNinjaHost)),
+                    Map.class);
+            log.info("OpenWebNinja fallback succeeded");
+            return response;
+        } catch (HttpClientErrorException ex) {
+            log.error("OpenWebNinja fallback also failed: HTTP {}", ex.getStatusCode().value());
+            throw new RuntimeException(
+                    "Both RapidAPI and OpenWebNinja are unavailable. Please try again later.", ex);
+        }
+    }
+
+    /**
+     * Returns true for HTTP status codes that indicate quota exhaustion.
+     * RapidAPI uses 429 (standard) and occasionally 403 with a quota message.
+     */
+    private boolean isQuotaError(HttpStatusCode status) {
+        int code = status.value();
+        return code == 429 || code == 403;
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    private HttpHeaders buildRapidApiHeaders() {
+    private HttpHeaders buildHeaders(String key, String host) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("X-RapidAPI-Key", apiKey);
-        headers.set("X-RapidAPI-Host", apiHost);
+        headers.set("X-RapidAPI-Key", key);
+        headers.set("X-RapidAPI-Host", host);
         return headers;
     }
 
