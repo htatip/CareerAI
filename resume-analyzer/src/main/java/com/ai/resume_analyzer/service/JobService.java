@@ -234,7 +234,7 @@ public class JobService {
             log.info("Calling OpenWebNinja fallback: {}", openWebNinjaFullUrl);
             ResponseEntity<Map> response = restTemplate.exchange(
                     openWebNinjaFullUrl, HttpMethod.GET,
-                    new HttpEntity<>(buildHeaders(openWebNinjaKey, openWebNinjaHost)),
+                    new HttpEntity<>(buildHeadersopenweb(openWebNinjaKey)),
                     Map.class);
             log.info("OpenWebNinja fallback succeeded");
             return response;
@@ -260,6 +260,12 @@ public class JobService {
         HttpHeaders headers = new HttpHeaders();
         headers.set("X-RapidAPI-Key", key);
         headers.set("X-RapidAPI-Host", host);
+        return headers;
+    }
+
+    private HttpHeaders buildHeadersopenweb(String key) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("x-api-key", key);
         return headers;
     }
 
