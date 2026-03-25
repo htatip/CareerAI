@@ -54,7 +54,7 @@ public class JobService {
     // ── Provider-specific JSearch endpoints ──────────────────────────────────
     // RapidAPI and OpenWebNinja expose JSearch at different base URLs.
     private static final String RAPIDAPI_URL = "https://jsearch.p.rapidapi.com/search";
-    private static final String OPENWEBNINJA_URL = "https://api.openwebninja.com/jsearch";
+    private static final String OPENWEBNINJA_URL = "https://api.openwebninja.com/jsearch/search";
 
     /**
      * Verifies that the given resume belongs to the given user.
@@ -130,7 +130,8 @@ public class JobService {
             throw new IllegalStateException("No skills found for resume id: " + resumeId);
         }
 
-        String query = skillList.stream().limit(2).collect(Collectors.joining(" "));
+        // String query = skillList.stream().limit(2).collect(Collectors.joining(" "));
+        String query = skillList.get(new Random().nextInt(skillList.size()));
         String queryString = "?query="
                 + URLEncoder.encode(query + " developer in " + location, StandardCharsets.UTF_8)
                 + "&num_pages=1";
@@ -230,12 +231,15 @@ public class JobService {
      */
     private ResponseEntity<Map> callOpenWebNinja(String queryString) {
         String openWebNinjaFullUrl = OPENWEBNINJA_URL + queryString;
+        System.out.println("Trying OpenWebNinja fallback: " + openWebNinjaFullUrl);
         try {
             log.info("Calling OpenWebNinja fallback: {}", openWebNinjaFullUrl);
             ResponseEntity<Map> response = restTemplate.exchange(
-                    openWebNinjaFullUrl, HttpMethod.GET,
+                    openWebNinjaFullUrl,
+                    HttpMethod.GET,
                     new HttpEntity<>(buildHeadersopenweb(openWebNinjaKey)),
                     Map.class);
+
             log.info("OpenWebNinja fallback succeeded");
             return response;
         } catch (HttpClientErrorException ex) {
