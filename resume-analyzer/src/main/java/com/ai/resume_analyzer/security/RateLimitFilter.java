@@ -43,7 +43,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
 
-        if (!request.getRequestURI().startsWith("/auth/login")) {
+        String uri = request.getRequestURI();
+        if (!uri.startsWith("/api/auth/login") && !uri.startsWith("/api/auth/forgot-password")) {
             filterChain.doFilter(request, response);
             return;
         }

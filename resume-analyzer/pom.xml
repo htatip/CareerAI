@@ -71,7 +71,6 @@
 			<version>8.10.1</version>
 		</dependency>
 
-		<!-- Caffeine cache for bounded IP → rate-limit bucket mapping in RateLimitFilter -->
 		<dependency>
 			<groupId>com.github.ben-manes.caffeine</groupId>
 			<artifactId>caffeine</artifactId>
@@ -122,9 +121,14 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-mail</artifactId>
 		</dependency>
-
-		<!-- jackson-databind is transitively provided by spring-boot-starter-webmvc;
-		     explicit declaration removed to avoid version conflicts. -->
+		<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+</dependency>
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-databind</artifactId>
+</dependency>
 	</dependencies>
 
 	<build>

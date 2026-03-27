@@ -41,7 +41,6 @@ public class AuthController {
 
     /**
      * Step 1 — User submits their email.
-     * Always responds with 200 OK to prevent user enumeration.
      */
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponse<Void>> forgotPassword(

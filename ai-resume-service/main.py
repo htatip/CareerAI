@@ -159,21 +159,6 @@ async def analyze_resume(file: UploadFile = File(...)):
     result = extract_skills_llm(text)
     return {"text": text, "skills": result["skills"]}
 
-
-@Secure.post("/match-job")
-async def match_job(resume_skills: List[str], job_skills: List[str]):
-    resume_set = set(s.lower() for s in resume_skills)
-    job_set = set(s.lower() for s in job_skills)
-    matched = resume_set.intersection(job_set)
-    missing = job_set - resume_set
-    score = (len(matched) / len(job_set)) * 100 if job_set else 0
-    return {
-        "match_score": round(score, 2),
-        "matched_skills": list(matched),
-        "missing_skills": list(missing)
-    }
-
-
 @Secure.post("/ai-resume-job-analysis")
 async def ai_resume_job_analysis(data: MatchRequest):
     prompt = f"""You are an AI career advisor. Analyze resume skills vs job description.

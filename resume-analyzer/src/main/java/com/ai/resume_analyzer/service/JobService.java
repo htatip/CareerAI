@@ -19,7 +19,6 @@ import org.springframework.web.client.RestTemplate;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -130,7 +129,6 @@ public class JobService {
             throw new IllegalStateException("No skills found for resume id: " + resumeId);
         }
 
-        // String query = skillList.stream().limit(2).collect(Collectors.joining(" "));
         String query = skillList.get(new Random().nextInt(skillList.size()));
         String queryString = "?query="
                 + URLEncoder.encode(query + " developer in " + location, StandardCharsets.UTF_8)
