@@ -20,7 +20,7 @@ if not AI_SERVICE_SECRET:
     raise RuntimeError("AI_SERVICE_SECRET is not set. Add it to your .env file.")
 
 client = Groq(api_key=GROQ_API_KEY)
-MODEL = "llama-3.1-8b-instant"
+MODEL = "openai/gpt-oss-120b"
 
 MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024
 
